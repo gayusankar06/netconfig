@@ -1,7 +1,6 @@
 from typing import List, Optional, Dict, Any, Union
 import uuid
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Union
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -9,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.user import User
-from app.models.review import Review
+from app.models.review import Review, ReviewStatus
 from app.models.workflow_step import WorkflowStep
 from app.models.audit import AuditLog
 from app.schemas.review import ReviewOut, ReviewDetailOut, WorkflowStepOut, ApprovalAction

@@ -4,10 +4,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+import httpx
 
 from app.database import get_db
-from google.oauth2 import id_token
-from google.auth.transport import requests as google_requests
+# google-auth still installed for fallback but we use UserInfo API directly
+try:
+    from google.oauth2 import id_token
+    from google.auth.transport import requests as google_requests
+except ImportError:
+    id_token = None
 import logging
 import os
 from app.models.user import User, Role
@@ -73,7 +78,7 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
 class GoogleAuthRequest(BaseModel):
-    token: str
+    access_token: str  # OAuth2 access_token from @react-oauth/google useGoogleLogin
 
 class ForgotPasswordRequest(BaseModel):
     email: str
@@ -152,40 +157,54 @@ async def login(login_data: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/google", response_model=TokenOut)
 async def google_auth(auth_data: GoogleAuthRequest, db: AsyncSession = Depends(get_db)):
-    client_id = os.getenv("GOOGLE_CLIENT_ID", "")
-    if not client_id:
-        raise HTTPException(status_code=500, detail="Google Client ID is not configured on the server")
-    
+    """
+    Exchange a Google OAuth2 access_token (from @react-oauth/google useGoogleLogin)
+    for a platform JWT. Uses Google's UserInfo endpoint.
+    """
     try:
-        idinfo = id_token.verify_oauth2_token(auth_data.token, google_requests.Request(), client_id)
-        email = idinfo.get("email")
-        full_name = idinfo.get("name", "Google User")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid Google token")
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                headers={"Authorization": f"Bearer {auth_data.access_token}"},
+                timeout=10.0
+            )
+        if resp.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid Google access token")
+        info = resp.json()
+        email = info.get("email")
+        full_name = info.get("name") or info.get("given_name", "Google User")
+        provider_id = info.get("sub", "")
+        if not email:
+            raise HTTPException(status_code=400, detail="Google account has no email")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Google verification failed: {str(e)}")
 
     result = await db.execute(select(User).filter(User.email == email))
     user = result.scalars().first()
 
     if not user:
-        # Auto register
+        # Auto-register new Google user
         user = User(
             email=email,
-            hashed_password=AuthService.hash_password(os.urandom(16).hex()),
+            hashed_password=AuthService.hash_password(os.urandom(24).hex()),
             full_name=full_name,
             role=Role.network_engineer,
             provider="google",
+            provider_id=provider_id,
             is_active=True
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
-
-        if HAS_AUDIT:
-            audit = AuditLog(event_type="USER_MANAGEMENT", event_description=f"Google User {user.email} registered", user_id=user.id)
-            db.add(audit)
+        logging.info(f"Auto-registered Google user: {email}")
+    elif user.provider == "local":
+        # Allow Google login for existing local account — just update provider
+        user.provider_id = provider_id
 
     if not user.is_active:
-        raise HTTPException(status_code=400, detail="Inactive user")
+        raise HTTPException(status_code=400, detail="Account is inactive. Contact your administrator.")
 
     user.last_login_at = datetime.utcnow()
     db.add(user)
@@ -193,10 +212,19 @@ async def google_auth(auth_data: GoogleAuthRequest, db: AsyncSession = Depends(g
     access_token = AuthService.create_access_token(data={"sub": str(user.id), "role": user.role.value})
     refresh_token = AuthService.create_refresh_token(data={"sub": str(user.id)})
 
-    if HAS_AUDIT:
-        audit = AuditLog(event_type="AUTH_LOGIN", event_description=f"User {user.email} logged in via Google", user_id=user.id)
+    # Audit log
+    try:
+        audit = AuditLog(
+            event_type="AUTH_LOGIN",
+            event_description=f"User {user.email} logged in via Google OAuth",
+            user_id=user.id,
+            user_email=user.email,
+            user_role=str(user.role.value if hasattr(user.role, 'value') else user.role)
+        )
         db.add(audit)
-    
+    except Exception:
+        pass  # Audit failure must not block login
+
     await db.commit()
 
     return {
