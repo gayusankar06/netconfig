@@ -1,6 +1,9 @@
+from typing import List, Optional, Dict, Any, Union
 import os
 import uuid
+from typing import List, Optional, Dict, Any, Union
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from typing import List, Optional, Dict, Any, Union
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -16,13 +19,27 @@ from app.config import settings
 
 router = APIRouter()
 
-@router.post("/{review_id}")
-async def generate_report(
+@router.get("/{review_id}")
+async def get_report(
     review_id: uuid.UUID,
-    format: str = Query(..., description="pdf, markdown, or json"),
+    format: str = Query("pdf", description="pdf, markdown, or json"),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
+    """GET endpoint for report download — easier for browser downloads."""
+    return await _generate_report(review_id, format, current_user, db)
+
+@router.post("/{review_id}")
+async def generate_report(
+    review_id: uuid.UUID,
+    format: str = Query("pdf", description="pdf, markdown, or json"),
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """POST endpoint for programmatic report generation."""
+    return await _generate_report(review_id, format, current_user, db)
+
+async def _generate_report(review_id, format, current_user, db):
     # Eager load relationships so report service has access to lists
     result = await db.execute(
         select(Review)
@@ -58,14 +75,7 @@ async def generate_report(
         report_service.generate_pdf(review, file_path)
         return FileResponse(file_path, media_type="application/pdf", filename=f"ReviewReport_{review_id}.pdf")
         
-    elif format.lower() == "markdown":
-        file_path = os.path.join(settings.REPORT_OUTPUT_DIR, f"{review_id}.md")
-        md_content = report_service.generate_markdown(review)
-        os.makedirs(settings.REPORT_OUTPUT_DIR, exist_ok=True)
-        with open(file_path, "w", encoding="utf-8") as f:
-            f.write(md_content)
-        return FileResponse(file_path, media_type="text/markdown", filename=f"ReviewReport_{review_id}.md")
-        
+
     elif format.lower() == "json":
         json_data = report_service.generate_json(review)
         return JSONResponse(content=json_data)

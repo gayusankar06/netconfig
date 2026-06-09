@@ -1,6 +1,7 @@
+from typing import List, Optional, Dict, Any, Union
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any, Union
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -50,21 +51,24 @@ async def get_review(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(
-        select(Review)
-        .filter(Review.id == review_id)
-        .options(
-            selectinload(Review.diff_changes),
-            selectinload(Review.compliance_findings),
-            selectinload(Review.workflow_steps),
-            selectinload(Review.creator),
-            selectinload(Review.assigned_reviewer)
+    try:
+        result = await db.execute(
+            select(Review)
+            .filter(Review.id == review_id)
+            .options(
+                selectinload(Review.diff_changes),
+                selectinload(Review.compliance_findings),
+                selectinload(Review.workflow_steps),
+            )
         )
-    )
-    review = result.scalars().first()
-    if not review:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
-    return review
+        review = result.scalars().first()
+        if not review:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
+        return review
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch review: {str(e)}")
 
 @router.get("/{review_id}/status")
 async def get_review_status(

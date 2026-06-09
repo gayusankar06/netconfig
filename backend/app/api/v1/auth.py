@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from typing import List, Optional, Dict, Any, Union
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +13,7 @@ import os
 from app.models.user import User, Role
 # If AuditLog exists, use it. Otherwise, comment out for now.
 try:
-    from app.models.audit_log import AuditLog
+    from app.models.audit import AuditLog
     HAS_AUDIT = False # Disabled due to schema mismatch
 except ImportError:
     HAS_AUDIT = False
@@ -85,59 +86,69 @@ class ResetPasswordRequest(BaseModel):
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).filter(User.email == user_data.email))
-    if result.scalars().first():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
-    
-    hashed_pwd = AuthService.hash_password(user_data.password)
-    user = User(
-        email=user_data.email,
-        hashed_password=hashed_pwd,
-        full_name=user_data.full_name,
-        role=user_data.role,
-        provider="local"
-    )
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-
-    if HAS_AUDIT:
-        audit = AuditLog(event_type="USER_MANAGEMENT", event_description=f"User {user.email} registered", user_id=user.id)
-        db.add(audit)
+    try:
+        result = await db.execute(select(User).filter(User.email == user_data.email))
+        if result.scalars().first():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+        
+        hashed_pwd = AuthService.hash_password(user_data.password)
+        user = User(
+            email=user_data.email,
+            hashed_password=hashed_pwd,
+            full_name=user_data.full_name,
+            role=user_data.role,
+            provider="local"
+        )
+        db.add(user)
         await db.commit()
+        await db.refresh(user)
 
-    return user
+        if HAS_AUDIT:
+            audit = AuditLog(event_type="USER_MANAGEMENT", event_description=f"User {user.email} registered", user_id=user.id)
+            db.add(audit)
+            await db.commit()
+
+        return user
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
 @router.post("/login", response_model=TokenOut)
 async def login(login_data: LoginRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).filter(User.email == login_data.email))
-    user = result.scalars().first()
-    
-    if not user or not AuthService.verify_password(login_data.password, user.hashed_password):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
-    
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
+    try:
+        result = await db.execute(select(User).filter(User.email == login_data.email))
+        user = result.scalars().first()
+        
+        if not user or not AuthService.verify_password(login_data.password, user.hashed_password):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
+        
+        if not user.is_active:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
 
-    user.last_login_at = datetime.utcnow()
-    db.add(user)
+        user.last_login_at = datetime.utcnow()
+        db.add(user)
 
-    access_token = AuthService.create_access_token(data={"sub": str(user.id), "role": user.role.value})
-    refresh_token = AuthService.create_refresh_token(data={"sub": str(user.id)})
+        access_token = AuthService.create_access_token(data={"sub": str(user.id), "role": user.role.value})
+        refresh_token = AuthService.create_refresh_token(data={"sub": str(user.id)})
 
-    if HAS_AUDIT:
-        audit = AuditLog(event_type="AUTH_LOGIN", event_description=f"User {user.email} logged in", user_id=user.id)
-        db.add(audit)
-    
-    await db.commit()
+        if HAS_AUDIT:
+            audit = AuditLog(event_type="AUTH_LOGIN", event_description=f"User {user.email} logged in", user_id=user.id)
+            db.add(audit)
+        
+        await db.commit()
 
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "Bearer",
-        "expires_in": settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        "user": user
-    }
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "Bearer",
+            "expires_in": settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            "user": user
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
 
 @router.post("/google", response_model=TokenOut)
 async def google_auth(auth_data: GoogleAuthRequest, db: AsyncSession = Depends(get_db)):

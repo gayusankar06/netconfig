@@ -72,4 +72,21 @@ class Review(Base):
     submitter = relationship("User", foreign_keys=[submitted_by_id])
     reviewer = relationship("User", foreign_keys=[reviewed_by_id])
     
-    # Other potential back_populates to resolve properly later: diff_changes, compliance_findings, workflow_steps
+    diff_changes = relationship(
+        "DiffChange",
+        back_populates="review",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+    compliance_findings = relationship(
+        "ComplianceFinding",
+        back_populates="review",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+    workflow_steps = relationship(
+        "WorkflowStep",
+        back_populates="review",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )

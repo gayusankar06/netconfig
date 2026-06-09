@@ -59,25 +59,22 @@ class ReviewOut(BaseModel):
     config_type: str
     cloud_provider: str
     status: str
-    overall_risk_level: str
+    risk_level: str
     overall_risk_score: Optional[float] = None
     compliance_score: Optional[float] = None
-    created_by: uuid.UUID
-    assigned_reviewer_id: Optional[uuid.UUID] = None
+    ai_summary: Optional[str] = None
+    ai_recommendation: Optional[str] = None
+    submitted_by_id: uuid.UUID
+    reviewed_by_id: Optional[uuid.UUID] = None
     created_at: datetime
-    updated_at: datetime
-    completed_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 class ReviewDetailOut(ReviewOut):
     model_config = ConfigDict(from_attributes=True)
 
-    creator: UserOut
-    assigned_reviewer: Optional[UserOut] = None
     diff_changes: List[DiffChangeOut] = []
     compliance_findings: List[ComplianceFindingOut] = []
     workflow_steps: List[WorkflowStepOut] = []
-    ai_summary: Optional[str] = None
-    ai_recommendation: Optional[str] = None
     compliance_frameworks: List[str] = []
 
 class DashboardStatsOut(BaseModel):

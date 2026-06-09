@@ -9,14 +9,16 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch, mm
 from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether)
 from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.charts.piecharts import Pie
 from app.models.review import Review
 
 RISK_COLORS = {
-    "LOW": colors.HexColor("#1B8A2C"),
-    "MEDIUM": colors.HexColor("#D97706"),
-    "HIGH": colors.HexColor("#D95D0A"),
-    "CRITICAL": colors.HexColor("#C62828"),
-    "UNKNOWN": colors.HexColor("#4B5563")
+    "LOW": colors.HexColor("#10B981"),
+    "MEDIUM": colors.HexColor("#F59E0B"),
+    "HIGH": colors.HexColor("#F97316"),
+    "CRITICAL": colors.HexColor("#EF4444"),
+    "UNKNOWN": colors.HexColor("#6B7280")
 }
 
 class ReportService:
@@ -47,7 +49,7 @@ class ReportService:
             fontName="Helvetica-Bold",
             fontSize=24,
             leading=28,
-            textColor=colors.HexColor("#1565C0"),
+            textColor=colors.HexColor("#1E293B"),
             alignment=TA_LEFT,
             spaceAfter=15
         )
@@ -58,9 +60,21 @@ class ReportService:
             fontName="Helvetica-Bold",
             fontSize=16,
             leading=20,
-            textColor=colors.HexColor("#1565C0"),
+            textColor=colors.HexColor("#3B82F6"),
             spaceBefore=15,
             spaceAfter=10,
+            keepWithNext=True
+        )
+
+        h2_style = ParagraphStyle(
+            "SectionH2",
+            parent=styles["Heading2"],
+            fontName="Helvetica-Bold",
+            fontSize=14,
+            leading=18,
+            textColor=colors.HexColor("#10B981"),
+            spaceBefore=10,
+            spaceAfter=8,
             keepWithNext=True
         )
 
@@ -70,7 +84,7 @@ class ReportService:
             fontName="Helvetica",
             fontSize=10,
             leading=14,
-            textColor=colors.HexColor("#374151"),
+            textColor=colors.HexColor("#334155"),
             spaceAfter=8
         )
 
@@ -80,7 +94,7 @@ class ReportService:
             fontName="Helvetica-Bold",
             fontSize=10,
             leading=14,
-            textColor=colors.HexColor("#1F2937")
+            textColor=colors.HexColor("#0F172A")
         )
 
         story = []
@@ -89,14 +103,14 @@ class ReportService:
         story.append(Paragraph("AI Network Config Diff Review Report", title_style))
         
         # Meta Table
-        created_by_str = str(review.created_by)
+        submitter_str = str(review.submitted_by_id)
         meta_data = [
             [Paragraph("Review Title:", meta_label_style), Paragraph(review.title, body_style)],
             [Paragraph("Review ID:", meta_label_style), Paragraph(str(review.id), body_style)],
             [Paragraph("Config Type:", meta_label_style), Paragraph(review.config_type, body_style)],
             [Paragraph("Cloud Provider:", meta_label_style), Paragraph(review.cloud_provider, body_style)],
             [Paragraph("Generated At:", meta_label_style), Paragraph(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), body_style)],
-            [Paragraph("Created By:", meta_label_style), Paragraph(created_by_str, body_style)]
+            [Paragraph("Submitted By:", meta_label_style), Paragraph(submitter_str, body_style)]
         ]
         meta_table = Table(meta_data, colWidths=[130, 350])
         meta_table.setStyle(TableStyle([
@@ -110,7 +124,8 @@ class ReportService:
         story.append(Spacer(1, 15))
 
         # Risk Summary Banner Table
-        risk_color = RISK_COLORS.get(review.overall_risk_level, colors.gray)
+        review_risk_level = (review.risk_level or 'UNKNOWN').upper()
+        risk_color = RISK_COLORS.get(review_risk_level, colors.gray)
         risk_label_style = ParagraphStyle(
             "RiskLabel",
             fontName="Helvetica-Bold",
@@ -120,7 +135,7 @@ class ReportService:
         )
         risk_banner_data = [
             [
-                Paragraph(f"OVERALL RISK: {review.overall_risk_level} (Score: {review.overall_risk_score or 0.0:.1f})", risk_label_style),
+                Paragraph(f"OVERALL RISK: {review_risk_level} (Score: {review.overall_risk_score or 0.0:.1f}/100)", risk_label_style),
                 Paragraph(f"COMPLIANCE SCORE: {review.compliance_score or 0.0:.1f}%", risk_label_style)
             ]
         ]
@@ -135,20 +150,71 @@ class ReportService:
         story.append(risk_banner_table)
         story.append(Spacer(1, 20))
 
-        # 2. Executive Summary / AI recommendations
-        story.append(Paragraph("Executive Summary", h1_style))
+        # 2. Executive Summary & Graph
+        story.append(Paragraph("Executive Summary & Risk Evaluation", h1_style))
         summary_text = review.ai_summary or "No executive summary available."
         story.append(Paragraph(summary_text, body_style))
+        story.append(Spacer(1, 10))
+
+        # Draw a simple pie chart if there are changes
+        if review.diff_changes:
+            risk_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+            for c in review.diff_changes:
+                rl = c.risk_level.upper() if c.risk_level else "UNKNOWN"
+                if rl in risk_counts:
+                    risk_counts[rl] += 1
+            
+            active_risks = [(k, v) for k, v in risk_counts.items() if v > 0]
+            if active_risks:
+                d = Drawing(400, 160)
+                pie = Pie()
+                pie.x = 130
+                pie.y = 20
+                pie.width = 120
+                pie.height = 120
+                pie.data = [v for k, v in active_risks]
+                pie.labels = [f"{k} ({v})" for k, v in active_risks]
+                
+                # Colors
+                for i, (k, v) in enumerate(active_risks):
+                    pie.slices[i].fillColor = RISK_COLORS.get(k, colors.gray)
+                
+                d.add(pie)
+                story.append(KeepTogether([
+                    Paragraph("Risk Distribution of Config Changes:", ParagraphStyle("bold", fontName="Helvetica-Bold", fontSize=10)),
+                    d
+                ]))
         story.append(Spacer(1, 15))
 
-        story.append(Paragraph("AI Recommendations & Decisions", h1_style))
-        rec_text = f"<b>Recommendation:</b> {review.ai_recommendation or 'PENDING'}<br/>" \
-                   f"<b>Workflow Status:</b> {review.status}"
-        story.append(Paragraph(rec_text, body_style))
+        # 3. Addressed Configurations & Good Practices
+        story.append(Paragraph("Addressed Configurations & Good Practices", h1_style))
+        story.append(Paragraph("The following configuration components were reviewed and deemed secure and compliant with best practices:", body_style))
+        
+        good_findings = [f for f in review.compliance_findings if f.status == "PASS"]
+        if good_findings:
+            good_data = [[Paragraph("Framework", meta_label_style), Paragraph("Secure Control Addressed", meta_label_style)]]
+            for gf in good_findings:
+                good_data.append([
+                    Paragraph(gf.framework, body_style),
+                    Paragraph(f"{gf.control_id}: {gf.control_name}", body_style)
+                ])
+            good_table = Table(good_data, colWidths=[100, 380])
+            good_table.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#10B981")),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E5E7EB")),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F0FDF4")]),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+                ('TOPPADDING', (0,0), (-1,-1), 6),
+            ]))
+            story.append(good_table)
+        else:
+            story.append(Paragraph("No specific positive configurations or passing compliance checks were logged.", body_style))
         story.append(Spacer(1, 20))
 
-        # 3. Changes Table
-        story.append(Paragraph(f"Configuration Changes ({len(review.diff_changes)} total)", h1_style))
+        # 4. Changes Table
+        story.append(Paragraph(f"Configuration Changes Details", h1_style))
         if review.diff_changes:
             table_header_style = ParagraphStyle("THeader", fontName="Helvetica-Bold", fontSize=9, leading=11, textColor=colors.white)
             table_body_style = ParagraphStyle("TBody", fontName="Helvetica", fontSize=8, leading=10)
@@ -162,20 +228,21 @@ class ReportService:
             ]]
 
             for c in review.diff_changes:
+                c_risk = (c.risk_level or "UNKNOWN").upper()
                 changes_data.append([
-                    Paragraph(c.field_name[:30], table_body_style),
-                    Paragraph(c.change_type, table_body_style),
+                    Paragraph((c.field_name or "N/A")[:30], table_body_style),
+                    Paragraph((c.change_type or "N/A"), table_body_style),
                     Paragraph(str(c.old_value or "")[:40], table_body_style),
                     Paragraph(str(c.new_value or "")[:40], table_body_style),
-                    Paragraph(f"<font color='{RISK_COLORS.get(c.risk_level, colors.black).hexval()}'><b>{c.risk_level}</b></font>", table_body_style)
+                    Paragraph(f"<font color='{RISK_COLORS.get(c_risk, colors.black).hexval()}'><b>{c_risk}</b></font>", table_body_style)
                 ])
 
             changes_table = Table(changes_data, colWidths=[100, 50, 140, 140, 50])
             changes_table.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1565C0")),
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#3B82F6")),
                 ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E5E7EB")),
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]),
+                ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F8FAFC")]),
                 ('BOTTOMPADDING', (0,0), (-1,-1), 6),
                 ('TOPPADDING', (0,0), (-1,-1), 6),
             ]))
@@ -184,9 +251,10 @@ class ReportService:
             story.append(Paragraph("No changes detected in configuration files.", body_style))
         story.append(Spacer(1, 20))
 
-        # 4. Compliance Findings
-        story.append(Paragraph("Compliance Findings", h1_style))
-        if review.compliance_findings:
+        # 5. Compliance Violations
+        story.append(Paragraph("Compliance Violations", h1_style))
+        bad_findings = [f for f in review.compliance_findings if f.status != "PASS"]
+        if bad_findings:
             comp_header_style = ParagraphStyle("CHeader", fontName="Helvetica-Bold", fontSize=9, leading=11, textColor=colors.white)
             comp_body_style = ParagraphStyle("CBody", fontName="Helvetica", fontSize=8, leading=10)
             
@@ -198,8 +266,8 @@ class ReportService:
                 Paragraph("Severity", comp_header_style)
             ]]
 
-            for f in review.compliance_findings:
-                status_color = colors.HexColor("#1B8A2C") if f.status == "PASS" else colors.HexColor("#C62828")
+            for f in bad_findings:
+                status_color = colors.HexColor("#EF4444")
                 comp_data.append([
                     Paragraph(f.framework, comp_body_style),
                     Paragraph(f.control_id, comp_body_style),
@@ -210,65 +278,29 @@ class ReportService:
 
             comp_table = Table(comp_data, colWidths=[70, 70, 200, 70, 70])
             comp_table.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1565C0")),
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#EF4444")),
                 ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E5E7EB")),
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]),
+                ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#FEF2F2")]),
                 ('BOTTOMPADDING', (0,0), (-1,-1), 6),
                 ('TOPPADDING', (0,0), (-1,-1), 6),
             ]))
             story.append(comp_table)
         else:
-            story.append(Paragraph("No compliance checks run or findings created.", body_style))
+            story.append(Paragraph("No compliance violations found.", body_style))
         story.append(Spacer(1, 20))
-
-        # 5. Approval Workflow timeline
-        story.append(Paragraph("Approval Workflow History", h1_style))
-        if review.workflow_steps:
-            wf_header_style = ParagraphStyle("WHeader", fontName="Helvetica-Bold", fontSize=9, leading=11, textColor=colors.white)
-            wf_body_style = ParagraphStyle("WBody", fontName="Helvetica", fontSize=8, leading=10)
-            
-            wf_data = [[
-                Paragraph("Step", wf_header_style),
-                Paragraph("Status", wf_header_style),
-                Paragraph("Actor", wf_header_style),
-                Paragraph("Date", wf_header_style),
-                Paragraph("Comment", wf_header_style)
-            ]]
-
-            for s in review.workflow_steps:
-                wf_data.append([
-                    Paragraph(str(s.step_number), wf_body_style),
-                    Paragraph(s.status, wf_body_style),
-                    Paragraph(f"{s.actor_name or '-'} ({s.actor_role or '-'})", wf_body_style),
-                    Paragraph(s.created_at.strftime("%Y-%m-%d"), wf_body_style),
-                    Paragraph(s.comment or "-", wf_body_style)
-                ])
-
-            wf_table = Table(wf_data, colWidths=[40, 80, 130, 80, 150])
-            wf_table.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1565C0")),
-                ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E5E7EB")),
-                ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F9FAFB")]),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-                ('TOPPADDING', (0,0), (-1,-1), 6),
-            ]))
-            story.append(wf_table)
-        else:
-            story.append(Paragraph("No workflow steps recorded yet.", body_style))
 
         def add_header_footer(canvas, doc):
             canvas.saveState()
-            canvas.setFillColor(colors.HexColor("#1565C0"))
+            canvas.setFillColor(colors.HexColor("#3B82F6"))
             canvas.setFont("Helvetica-Bold", 8)
             canvas.drawString(20*mm, 287*mm, "AI Network Config Diff Reviewer — CONFIDENTIAL")
-            canvas.setStrokeColor(colors.HexColor("#1565C0"))
+            canvas.setStrokeColor(colors.HexColor("#3B82F6"))
             canvas.setLineWidth(0.5)
             canvas.line(20*mm, 285*mm, 190*mm, 285*mm)
             
             canvas.setFont("Helvetica", 8)
-            canvas.setFillColor(colors.HexColor("#4B5563"))
+            canvas.setFillColor(colors.HexColor("#64748B"))
             canvas.drawString(20*mm, 10*mm, datetime.now().strftime("%Y-%m-%d"))
             canvas.drawRightString(190*mm, 10*mm, f"Page {doc.page}")
             canvas.restoreState()
@@ -276,97 +308,11 @@ class ReportService:
         doc.build(story, onFirstPage=add_header_footer, onLaterPages=add_header_footer)
         return output_path
 
-    def generate_markdown(self, review: Review) -> str:
-        """
-        Generates a developer-friendly Markdown report.
-        """
-        lines = [
-            f"# Network Config Review Report",
-            f"",
-            f"**Review Title:** {review.title}",
-            f"**Review ID:** `{review.id}`",
-            f"**Config Type:** {review.config_type}",
-            f"**Cloud Provider:** {review.cloud_provider}",
-            f"**Generated:** {datetime.now().isoformat()}Z",
-            f"**Ticket ID:** {review.ticket_id or 'N/A'}",
-            f"",
-            f"---",
-            f"",
-            f"## Risk Assessment",
-            f"",
-            f"| Attribute | Value |",
-            f"|-----------|-------|",
-            f"| Overall Risk Level | **{review.overall_risk_level}** |",
-            f"| Risk Score | {review.overall_risk_score or 0.0:.1f} / 100 |",
-            f"| Compliance Score | {review.compliance_score or 0.0:.1f}% |",
-            f"| AI Recommendation | **{review.ai_recommendation or 'PENDING'}** |",
-            f"| Approval Status | {review.status} |",
-            f"",
-            f"---",
-            f"",
-            f"## Executive Summary",
-            f"",
-            f"{review.ai_summary or '_AI summary not available._'}",
-            f"",
-            f"---",
-            f"",
-            f"## Configuration Changes ({len(review.diff_changes)} total)",
-            f"",
-            f"| # | Field | Change Type | Old Value | New Value | Risk |",
-            f"|---|-------|-------------|-----------|-----------|------|",
-        ]
-
-        for i, c in enumerate(review.diff_changes, 1):
-            old_v = (c.old_value or "_N/A_")[:60]
-            new_v = (c.new_value or "_N/A_")[:60]
-            lines.append(f"| {i} | `{c.field_name[:40]}` | {c.change_type} | {old_v} | {new_v} | **{c.risk_level}** |")
-
-        lines.extend([
-            f"",
-            f"---",
-            f"",
-            f"## Compliance Findings",
-            f""
-        ])
-
-        for framework in ["CIS", "NIST", "PCI_DSS", "CUSTOM"]:
-            fw_findings = [f for f in review.compliance_findings if f.framework == framework]
-            if fw_findings:
-                lines.append(f"### {framework} Controls")
-                lines.append(f"")
-                for f in fw_findings:
-                    status_emoji = "✅" if f.status == "PASS" else "❌"
-                    lines.append(f"- {status_emoji} **{f.control_id}** — {f.control_name}")
-                    if f.status != "PASS":
-                        lines.append(f"  - **Finding:** {f.finding_description}")
-                        lines.append(f"  - **Remediation:** {f.remediation_guidance}")
-                lines.append(f"")
-
-        lines.extend([
-            f"---",
-            f"",
-            f"## Approval Workflow",
-            f"",
-            f"| Step | Status | Actor | Timestamp | Comment |",
-            f"|------|--------|-------|-----------|---------|",
-        ])
-
-        for s in review.workflow_steps:
-            lines.append(f"| {s.step_number} | {s.status} | {s.actor_name or '-'} ({s.actor_role or '-'}) | {s.created_at.strftime('%Y-%m-%d %H:%M:%S')} | {s.comment or '-'} |")
-
-        lines.extend([
-            f"",
-            f"---",
-            f"",
-            f"_Report generated by AI Network Config Diff Reviewer v1.0 — Powered by Ollama + Llama 3_"
-        ])
-
-        return "\n".join(lines)
-
     def generate_json(self, review: Review) -> Dict[str, Any]:
         """
         Generates a machine-readable JSON export.
         """
+        review_risk_level = (review.risk_level or 'UNKNOWN').upper()
         return {
             "schema_version": "1.0",
             "generated_at": datetime.now().isoformat() + "Z",
@@ -377,14 +323,13 @@ class ReportService:
                 "cloud_provider": review.cloud_provider,
                 "ticket_id": review.ticket_id,
                 "status": review.status,
-                "overall_risk_level": review.overall_risk_level,
+                "overall_risk_level": review_risk_level,
                 "overall_risk_score": review.overall_risk_score,
                 "compliance_score": review.compliance_score,
                 "ai_recommendation": review.ai_recommendation,
                 "ai_summary": review.ai_summary,
                 "compliance_frameworks": review.compliance_frameworks,
                 "created_at": review.created_at.isoformat() + "Z",
-                "completed_at": review.completed_at.isoformat() + "Z" if review.completed_at else None,
             },
             "diff_changes": [
                 {
@@ -396,11 +341,9 @@ class ReportService:
                     "risk_level": c.risk_level,
                     "risk_score": c.risk_score,
                     "ai_explanation": c.ai_explanation,
-                    "cis_control_ref": c.cis_control_ref,
-                    "nist_control_ref": c.nist_control_ref
                 }
                 for c in review.diff_changes
-            ],
+            ] if review.diff_changes else [],
             "compliance_findings": [
                 {
                     "framework": f.framework,
@@ -412,7 +355,7 @@ class ReportService:
                     "remediation": f.remediation_guidance
                 }
                 for f in review.compliance_findings
-            ],
+            ] if review.compliance_findings else [],
             "workflow": [
                 {
                     "step": s.step_number,
@@ -423,6 +366,7 @@ class ReportService:
                     "timestamp": s.created_at.isoformat() + "Z"
                 }
                 for s in review.workflow_steps
-            ]
+            ] if review.workflow_steps else []
         }
+
 report_service = ReportService()

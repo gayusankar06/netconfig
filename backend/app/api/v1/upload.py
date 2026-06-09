@@ -1,5 +1,7 @@
+from typing import List, Optional, Dict, Any, Union
 import os
 import uuid
+from typing import List, Optional, Dict, Any, Union
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,16 +48,17 @@ async def upload_configs(
     with open(new_path, "wb") as f:
         f.write(new_bytes)
         
-    # Log audit
-    audit = AuditLog(
-        event_type="CONFIG_UPLOAD",
-        event_description=f"User {current_user.email} uploaded configuration files for {config_type} ({cloud_provider})",
-        user_id=current_user.id,
-        user_email=current_user.email,
-        user_role=current_user.role,
-        payload={"upload_id": upload_id, "config_type": config_type, "cloud_provider": cloud_provider}
-    )
-    db.add(audit)
+    HAS_AUDIT = True
+    if HAS_AUDIT:
+        audit = AuditLog(
+            event_type="CONFIG_UPLOAD",
+            event_description=f"User {current_user.email} uploaded configuration files for {config_type} ({cloud_provider})",
+            user_id=current_user.id,
+            user_email=current_user.email,
+            user_role=current_user.role,
+            payload={"upload_id": upload_id, "config_type": config_type, "cloud_provider": cloud_provider}
+        )
+        db.add(audit)
     await db.commit()
 
     return {"upload_id": upload_id}

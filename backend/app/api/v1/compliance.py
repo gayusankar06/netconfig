@@ -1,4 +1,6 @@
+from typing import List, Optional, Dict, Any, Union
 import uuid
+from typing import List, Optional, Dict, Any, Union
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -63,4 +65,3 @@ async def get_compliance_report(
     result = await db.execute(select(ComplianceFinding).filter(ComplianceFinding.review_id == review_id))
     findings = result.scalars().all()
     return list(findings)
-from typing import List

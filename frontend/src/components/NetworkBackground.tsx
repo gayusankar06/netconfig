@@ -1,4 +1,4 @@
-import React, { useRef, useMemo } from 'react';
+import { useRef, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Points, PointMaterial } from '@react-three/drei';
 import * as THREE from 'three';
@@ -16,7 +16,7 @@ function ParticleCloud() {
     return p;
   }, [count]);
 
-  useFrame((state, delta) => {
+  useFrame((_state, delta) => {
     if (ref.current) {
       ref.current.rotation.x -= delta / 15;
       ref.current.rotation.y -= delta / 20;
@@ -24,7 +24,7 @@ function ParticleCloud() {
   });
 
   return (
-    <Points ref={ref} positions={positions} stride={3} frustumCulled={false} margin={1.2}>
+    <Points ref={ref} positions={positions} stride={3} frustumCulled={false}>
       <PointMaterial transparent color="#4facfe" size={0.08} sizeAttenuation={true} depthWrite={false} />
     </Points>
   );

@@ -9,6 +9,10 @@ from app.database import init_db
 from app.config import settings
 from app.utils.logger import logger
 
+# CRITICAL: Import all models here to ensure SQLAlchemy mapper registry is fully
+# populated before any relationship resolution happens at request time.
+import app.models  # noqa: F401 — registers User, Review, DiffChange, ComplianceFinding, WorkflowStep
+
 # Custom exceptions and middleware (if available, otherwise we use standard FastAPI)
 try:
     from app.core.middleware import RequestIDMiddleware, TimingMiddleware, AuditLoggingMiddleware
