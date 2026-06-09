@@ -13,7 +13,7 @@ from app.models.user import User, Role
 # If AuditLog exists, use it. Otherwise, comment out for now.
 try:
     from app.models.audit_log import AuditLog
-    HAS_AUDIT = True
+    HAS_AUDIT = False # Disabled due to schema mismatch
 except ImportError:
     HAS_AUDIT = False
 
@@ -45,8 +45,10 @@ class UserCreate(BaseModel):
     full_name: str
     role: Role = Role.network_engineer
 
+import uuid
+
 class UserOut(BaseModel):
-    id: str
+    id: uuid.UUID
     email: str
     full_name: str
     role: Role

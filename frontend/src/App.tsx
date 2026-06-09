@@ -7,14 +7,26 @@ import AuthPage from './components/AuthPage';
 import Dashboard from './components/Dashboard';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import keycloak from './keycloak';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    setIsAuthenticated(keycloak.authenticated || false);
+    const token = localStorage.getItem('token');
+    if (token) {
+      setIsAuthenticated(true);
+    }
   }, []);
+
+  const handleLogin = (token: string) => {
+    localStorage.setItem('token', token);
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    setIsAuthenticated(false);
+  };
 
   return (
     <ThemeProvider theme={theme}>
@@ -22,9 +34,9 @@ function App() {
       <NetworkBackground />
       
       {isAuthenticated ? (
-        <Dashboard onLogout={() => keycloak.logout()} />
+        <Dashboard onLogout={handleLogout} />
       ) : (
-        <AuthPage />
+        <AuthPage onLogin={handleLogin} />
       )}
       
       <ToastContainer position="bottom-right" theme="dark" />
