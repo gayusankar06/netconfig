@@ -10,7 +10,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.review import Review
 from app.models.audit import AuditLog
-from app.services.auth_service import get_current_active_user
+from app.core.auth_dependencies import get_current_active_user
 from app.services.report_service import ReportService
 from app.config import settings
 

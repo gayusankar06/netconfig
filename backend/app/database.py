@@ -4,8 +4,8 @@ from app.config import settings
 
 engine = create_async_engine(
     settings.DATABASE_URL,
-    pool_size=settings.DATABASE_POOL_SIZE,
-    max_overflow=settings.DATABASE_MAX_OVERFLOW,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
     pool_pre_ping=True,
     pool_recycle=3600,
     echo=settings.ENVIRONMENT == "development"

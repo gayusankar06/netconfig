@@ -9,7 +9,7 @@ from app.models.review import Review
 from app.models.diff_change import DiffChange
 from app.models.compliance import ComplianceFinding
 from app.schemas.review import DashboardStatsOut
-from app.services.auth_service import get_current_active_user
+from app.core.auth_dependencies import get_current_active_user
 
 router = APIRouter()
 

@@ -7,7 +7,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.review import Review
 from app.models.diff_change import DiffChange
-from app.services.auth_service import get_current_active_user
+from app.core.auth_dependencies import get_current_active_user
 from app.workers.tasks import run_analysis_pipeline_task
 
 router = APIRouter()

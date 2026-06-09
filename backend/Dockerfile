@@ -1,43 +1,66 @@
-FROM python:3.12-slim as builder
+# ==========================================
+# Stage 1: Builder
+# ==========================================
+FROM python:3.11-slim-bookworm AS builder
 
-WORKDIR /app
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
+WORKDIR /build
+
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
-    gcc \
     && rm -rf /var/lib/apt/lists/*
 
+# Install python dependencies into a virtualenv
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+RUN pip install -r requirements.txt
 
-FROM python:3.12-slim as production
+# ==========================================
+# Stage 2: Production
+# ==========================================
+FROM python:3.11-slim-bookworm AS production
 
-LABEL maintainer="enterprise@netconfigdiff.com"
-LABEL description="AI Network Config Diff Reviewer — FastAPI Backend"
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH" \
+    PYTHONPATH="/app"
 
 WORKDIR /app
 
+# Install runtime dependencies (libpq for postgres)
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
     curl \
-    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /root/.local /root/.local
+# Create a non-root user
+RUN groupadd -r app && useradd -r -g app -u 1000 app
+
+# Copy virtualenv from builder
+COPY --from=builder /opt/venv /opt/venv
+
+# Copy application code
 COPY . .
 
-ENV PATH=/root/.local/bin:$PATH
-ENV PYTHONUNBUFFERED=1
+# Set permissions
+RUN mkdir -p /app/storage /tmp/reports /tmp/uploads && chown -R app:app /app /tmp/reports /tmp/uploads
 
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser
-RUN mkdir -p /tmp/uploads /tmp/reports && \
-    chown -R appuser:appgroup /tmp/uploads /tmp/reports /app
+# Switch to non-root user
+USER app
 
-USER appuser
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8000/health/ready || exit 1
 
-EXPOSE 8000
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v1/health || exit 1
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--loop", "uvloop", "--http", "httptools"]
+# Note: uvicorn is specified directly in docker-compose, but we can provide a default CMD
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]

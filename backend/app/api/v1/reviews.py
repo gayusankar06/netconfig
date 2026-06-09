@@ -12,7 +12,7 @@ from app.models.review import Review
 from app.models.workflow_step import WorkflowStep
 from app.models.audit import AuditLog
 from app.schemas.review import ReviewOut, ReviewDetailOut, WorkflowStepOut, ApprovalAction
-from app.services.auth_service import get_current_active_user, require_role
+from app.core.auth_dependencies import get_current_active_user, RoleGuard
 
 router = APIRouter()
 
@@ -96,7 +96,7 @@ async def get_workflow_status(
 async def approve_review(
     review_id: uuid.UUID,
     action: ApprovalAction,
-    current_user: User = Depends(require_role(["APPROVER", "ADMIN"])),
+    current_user: User = Depends(RoleGuard(["APPROVER", "ADMIN"])),
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(Review).filter(Review.id == review_id))
@@ -147,7 +147,7 @@ async def approve_review(
 async def reject_review(
     review_id: uuid.UUID,
     action: ApprovalAction,
-    current_user: User = Depends(require_role(["APPROVER", "ADMIN"])),
+    current_user: User = Depends(RoleGuard(["APPROVER", "ADMIN"])),
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(Review).filter(Review.id == review_id))
@@ -196,7 +196,7 @@ async def reject_review(
 async def escalate_review(
     review_id: uuid.UUID,
     action: ApprovalAction,
-    current_user: User = Depends(require_role(["REVIEWER", "APPROVER", "ADMIN"])),
+    current_user: User = Depends(RoleGuard(["REVIEWER", "APPROVER", "ADMIN"])),
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(Review).filter(Review.id == review_id))

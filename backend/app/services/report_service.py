@@ -1,5 +1,6 @@
 import json
 import os
+
 from datetime import datetime
 from typing import Dict, Any, List
 from reportlab.lib import colors
@@ -424,3 +425,4 @@ class ReportService:
                 for s in review.workflow_steps
             ]
         }
+report_service = ReportService()

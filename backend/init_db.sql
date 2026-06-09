@@ -7,8 +7,12 @@ CREATE TABLE IF NOT EXISTS users (
     role VARCHAR(50) NOT NULL DEFAULT 'NETWORK_ENGINEER',
     is_active BOOLEAN DEFAULT TRUE,
     is_verified BOOLEAN DEFAULT TRUE,
+    provider VARCHAR(50),
+    provider_id VARCHAR(255),
     created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    last_login TIMESTAMP WITHOUT TIME ZONE
+    updated_at TIMESTAMP WITHOUT TIME ZONE,
+    last_login TIMESTAMP WITHOUT TIME ZONE,
+    last_login_at TIMESTAMP WITHOUT TIME ZONE
 );
 
 -- Seed initial admin user if not exists
