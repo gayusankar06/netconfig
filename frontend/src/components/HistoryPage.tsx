@@ -72,25 +72,17 @@ export default function HistoryPage({ onBack, onViewReview }: HistoryPageProps) 
 
   return (
     <Fade in>
-      <Box sx={{ p: { xs: 2, md: 4 }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box sx={{ p: { xs: 2, md: 3 }, pb: 8, position: 'relative', zIndex: 1 }}>
         {/* Header */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 4 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <IconButton
-              onClick={onBack}
-              sx={{ bgcolor: 'rgba(255,255,255,0.1)', '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}
-            >
-              <ArrowBackIcon />
-            </IconButton>
-            <Box>
-              <Typography variant="h4" sx={{ fontWeight: 700 }}>Review History</Typography>
-              <Typography variant="body2" sx={{ color: '#94A3B8' }}>
-                All network configuration change reviews
-              </Typography>
-            </Box>
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 800, color: 'white', mb: 0.5 }}>Review History</Typography>
+            <Typography variant="body2" sx={{ color: '#64748B' }}>
+              All network configuration change reviews
+            </Typography>
           </Box>
           <Tooltip title="Refresh">
-            <IconButton onClick={fetchReviews} sx={{ bgcolor: 'rgba(255,255,255,0.1)' }}>
+            <IconButton onClick={fetchReviews} sx={{ color: '#64748B', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 2, '&:hover': { color: 'white' } }}>
               <RefreshIcon />
             </IconButton>
           </Tooltip>

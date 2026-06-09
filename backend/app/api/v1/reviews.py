@@ -100,7 +100,7 @@ async def get_workflow_status(
 async def approve_review(
     review_id: uuid.UUID,
     action: ApprovalAction,
-    current_user: User = Depends(RoleGuard(["APPROVER", "ADMIN"])),
+    current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(Review).filter(Review.id == review_id))
@@ -108,10 +108,11 @@ async def approve_review(
     if not review:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
         
-    review.status = "APPROVED"
-    review.completed_at = datetime.utcnow()
+    review.status = ReviewStatus.approved
+    review.approved_at = datetime.utcnow()
+    review.approval_comment = action.comment
+    review.reviewed_by_id = current_user.id
     
-    # Add step
     steps_result = await db.execute(select(WorkflowStep).filter(WorkflowStep.review_id == review_id))
     next_step_num = len(steps_result.scalars().all()) + 1
     
@@ -121,25 +122,23 @@ async def approve_review(
         status="APPROVED",
         actor_id=current_user.id,
         actor_name=current_user.full_name,
-        actor_role=current_user.role,
+        actor_role=str(current_user.role.value if hasattr(current_user.role, 'value') else current_user.role),
         comment=action.comment
     )
     db.add(step)
     
-    # Log Audit
     audit = AuditLog(
         event_type="REVIEW_APPROVED",
-        event_description=f"Review {review.title} approved by {current_user.email}",
+        event_description=f"Review '{review.title}' approved by {current_user.email}",
         user_id=current_user.id,
         user_email=current_user.email,
-        user_role=current_user.role,
+        user_role=str(current_user.role.value if hasattr(current_user.role, 'value') else current_user.role),
         review_id=review_id,
         payload={"comment": action.comment}
     )
     db.add(audit)
     await db.commit()
     
-    # Fetch workflow timeline
     workflow_res = await db.execute(
         select(WorkflowStep)
         .filter(WorkflowStep.review_id == review_id)
@@ -147,11 +146,12 @@ async def approve_review(
     )
     return list(workflow_res.scalars().all())
 
+
 @router.patch("/{review_id}/reject", response_model=List[WorkflowStepOut])
 async def reject_review(
     review_id: uuid.UUID,
     action: ApprovalAction,
-    current_user: User = Depends(RoleGuard(["APPROVER", "ADMIN"])),
+    current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(Review).filter(Review.id == review_id))
@@ -159,8 +159,10 @@ async def reject_review(
     if not review:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
         
-    review.status = "REJECTED"
-    review.completed_at = datetime.utcnow()
+    review.status = ReviewStatus.rejected
+    review.rejected_at = datetime.utcnow()
+    review.approval_comment = action.comment
+    review.reviewed_by_id = current_user.id
     
     steps_result = await db.execute(select(WorkflowStep).filter(WorkflowStep.review_id == review_id))
     next_step_num = len(steps_result.scalars().all()) + 1
@@ -171,18 +173,17 @@ async def reject_review(
         status="REJECTED",
         actor_id=current_user.id,
         actor_name=current_user.full_name,
-        actor_role=current_user.role,
+        actor_role=str(current_user.role.value if hasattr(current_user.role, 'value') else current_user.role),
         comment=action.comment
     )
     db.add(step)
     
-    # Log Audit
     audit = AuditLog(
         event_type="REVIEW_REJECTED",
-        event_description=f"Review {review.title} rejected by {current_user.email}",
+        event_description=f"Review '{review.title}' rejected by {current_user.email}",
         user_id=current_user.id,
         user_email=current_user.email,
-        user_role=current_user.role,
+        user_role=str(current_user.role.value if hasattr(current_user.role, 'value') else current_user.role),
         review_id=review_id,
         payload={"comment": action.comment}
     )
@@ -200,7 +201,7 @@ async def reject_review(
 async def escalate_review(
     review_id: uuid.UUID,
     action: ApprovalAction,
-    current_user: User = Depends(RoleGuard(["REVIEWER", "APPROVER", "ADMIN"])),
+    current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(Review).filter(Review.id == review_id))
@@ -208,7 +209,7 @@ async def escalate_review(
     if not review:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
         
-    review.status = "ESCALATED"
+    review.status = ReviewStatus.in_review
     
     steps_result = await db.execute(select(WorkflowStep).filter(WorkflowStep.review_id == review_id))
     next_step_num = len(steps_result.scalars().all()) + 1
@@ -219,18 +220,17 @@ async def escalate_review(
         status="ESCALATED",
         actor_id=current_user.id,
         actor_name=current_user.full_name,
-        actor_role=current_user.role,
+        actor_role=str(current_user.role.value if hasattr(current_user.role, 'value') else current_user.role),
         comment=action.comment
     )
     db.add(step)
     
-    # Log Audit
     audit = AuditLog(
         event_type="REVIEW_ESCALATED",
-        event_description=f"Review {review.title} escalated by {current_user.email}",
+        event_description=f"Review '{review.title}' escalated by {current_user.email}",
         user_id=current_user.id,
         user_email=current_user.email,
-        user_role=current_user.role,
+        user_role=str(current_user.role.value if hasattr(current_user.role, 'value') else current_user.role),
         review_id=review_id,
         payload={"comment": action.comment}
     )

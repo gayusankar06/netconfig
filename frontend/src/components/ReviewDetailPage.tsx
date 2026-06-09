@@ -4,7 +4,7 @@ import {
   Box, Typography, Paper, Grid, Chip, Button, Divider, LinearProgress,
   Tab, Tabs, CircularProgress, Alert, IconButton, Tooltip, Table,
   TableBody, TableCell, TableContainer, TableHead, TableRow, Fade,
-  Avatar
+  Avatar, Dialog, DialogTitle, DialogContent, DialogActions, TextField
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -83,6 +83,10 @@ export default function ReviewDetailPage({ reviewId, onBack }: ReviewDetailPageP
   const [tab, setTab] = useState(0);
   const [pollingStatus, setPollingStatus] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  // Workflow action state
+  const [actionDialog, setActionDialog] = useState<'approve' | 'reject' | 'escalate' | null>(null);
+  const [actionComment, setActionComment] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
 
   const fetchReview = useCallback(async () => {
     try {
@@ -130,11 +134,29 @@ export default function ReviewDetailPage({ reviewId, onBack }: ReviewDetailPageP
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      toast.success('Report downloaded successfully!');
+      toast.success('✅ Report downloaded successfully!');
     } catch (e: any) {
-      toast.error('Failed to download report. Generating...');
+      toast.error('Failed to download report. Please try again.');
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleWorkflowAction = async () => {
+    if (!actionComment.trim()) { toast.warning('Please enter a comment'); return; }
+    setActionLoading(true);
+    try {
+      const endpoint = `${API_BASE}/api/v1/reviews/${reviewId}/${actionDialog}`;
+      await axios.patch(endpoint, { comment: actionComment }, { headers: authHeaders() });
+      toast.success(`✅ Review ${actionDialog}d successfully!`);
+      setActionDialog(null);
+      setActionComment('');
+      await fetchReview();
+      setTab(4); // Switch to Workflow tab to see the new entry
+    } catch (e: any) {
+      toast.error(`Failed to ${actionDialog}: ${e.response?.data?.detail || e.message}`);
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -630,52 +652,116 @@ export default function ReviewDetailPage({ reviewId, onBack }: ReviewDetailPageP
             {/* Action Panel */}
             <Grid item xs={12} md={4}>
               <Paper sx={{ p: 3, bgcolor: 'rgba(30,41,59,0.7)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 }}>
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 3 }}>Review Actions</Typography>
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>Review Actions</Typography>
+                <Typography variant="caption" sx={{ color: '#475569', display: 'block', mb: 3 }}>
+                  Current status: <span style={{ color: STATUS_COLORS[review.status] || '#6B7280', fontWeight: 700 }}>{review.status?.replace(/_/g, ' ').toUpperCase()}</span>
+                </Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <Button
                     variant="contained"
                     startIcon={<CheckCircleIcon />}
                     fullWidth
-                    sx={{ bgcolor: '#10B981', py: 1.5, borderRadius: 2, fontWeight: 600, '&:hover': { bgcolor: '#059669' } }}
-                    onClick={() => toast.info('Approval flow coming soon!')}
+                    disabled={review.status === 'approved' || review.status === 'under_analysis'}
+                    sx={{ bgcolor: '#10B981', py: 1.5, borderRadius: 2, fontWeight: 700, '&:hover': { bgcolor: '#059669', boxShadow: '0 4px 16px rgba(16,185,129,0.3)' }, '&:disabled': { bgcolor: 'rgba(255,255,255,0.06)', color: '#334155' } }}
+                    onClick={() => { setActionDialog('approve'); setActionComment(''); }}
                   >
-                    Approve Change
+                    ✅ Approve Change
                   </Button>
                   <Button
                     variant="outlined"
                     startIcon={<CancelIcon />}
                     fullWidth
-                    sx={{ borderColor: '#EF4444', color: '#EF4444', py: 1.5, borderRadius: 2, fontWeight: 600, '&:hover': { bgcolor: '#EF444411' } }}
-                    onClick={() => toast.info('Rejection flow coming soon!')}
+                    disabled={review.status === 'rejected' || review.status === 'under_analysis'}
+                    sx={{ borderColor: '#EF4444', color: '#EF4444', py: 1.5, borderRadius: 2, fontWeight: 700, '&:hover': { bgcolor: '#EF444411' }, '&:disabled': { borderColor: 'rgba(255,255,255,0.1)', color: '#334155' } }}
+                    onClick={() => { setActionDialog('reject'); setActionComment(''); }}
                   >
-                    Reject Change
+                    ❌ Reject Change
                   </Button>
-                  <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
+                  <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
                   <Button
                     variant="outlined"
                     startIcon={<WarningAmberIcon />}
                     fullWidth
-                    sx={{ borderColor: '#F97316', color: '#F97316', py: 1.5, borderRadius: 2, fontWeight: 600, '&:hover': { bgcolor: '#F9731611' } }}
-                    onClick={() => toast.info('Escalation flow coming soon!')}
+                    disabled={review.status === 'under_analysis'}
+                    sx={{ borderColor: '#F97316', color: '#F97316', py: 1.5, borderRadius: 2, fontWeight: 700, '&:hover': { bgcolor: '#F9731611' }, '&:disabled': { borderColor: 'rgba(255,255,255,0.1)', color: '#334155' } }}
+                    onClick={() => { setActionDialog('escalate'); setActionComment(''); }}
                   >
-                    Escalate for Review
+                    ⚡ Escalate for Review
                   </Button>
-                  <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)' }} />
+                  <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
                   <Button
                     variant="outlined"
-                    startIcon={<DownloadIcon />}
+                    startIcon={downloading ? <CircularProgress size={16} color="inherit" /> : <DownloadIcon />}
                     fullWidth
                     onClick={handleDownloadReport}
                     disabled={downloading}
-                    sx={{ borderColor: '#3B82F6', color: '#3B82F6', py: 1.5, borderRadius: 2, fontWeight: 600 }}
+                    sx={{ borderColor: '#3B82F6', color: '#3B82F6', py: 1.5, borderRadius: 2, fontWeight: 700, '&:hover': { bgcolor: 'rgba(59,130,246,0.08)' } }}
                   >
-                    {downloading ? 'Generating PDF...' : 'Download PDF Report'}
+                    {downloading ? 'Generating PDF...' : '📄 Download PDF Report'}
                   </Button>
                 </Box>
               </Paper>
             </Grid>
           </Grid>
         </TabPanel>
+
+        {/* Workflow Action Dialog */}
+        <Dialog
+          open={Boolean(actionDialog)}
+          onClose={() => !actionLoading && setActionDialog(null)}
+          PaperProps={{
+            sx: {
+              bgcolor: '#0F172A',
+              color: 'white',
+              minWidth: 420,
+              borderRadius: 3,
+              border: '1px solid rgba(255,255,255,0.09)',
+            }
+          }}
+        >
+          <DialogTitle sx={{ fontWeight: 800, fontSize: '1.1rem' }}>
+            {actionDialog === 'approve' ? '✅ Approve Review' : actionDialog === 'reject' ? '❌ Reject Review' : '⚡ Escalate Review'}
+          </DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" sx={{ color: '#64748B', mb: 2 }}>
+              {actionDialog === 'approve'
+                ? 'Confirm that this configuration change has been reviewed and is safe to proceed.'
+                : actionDialog === 'reject'
+                ? 'Provide a clear reason why this change is being rejected so the submitter can address it.'
+                : 'Escalate this review to a senior engineer or security team for further evaluation.'
+              }
+            </Typography>
+            <TextField
+              autoFocus
+              fullWidth
+              label="Comment *"
+              placeholder={actionDialog === 'approve' ? 'e.g. Reviewed and confirmed low risk, all checks passed.' : actionDialog === 'reject' ? 'e.g. Port 22 exposed to 0.0.0.0/0 — security violation.' : 'e.g. Escalating to security team for CIS control review.'}
+              value={actionComment}
+              onChange={e => setActionComment(e.target.value)}
+              disabled={actionLoading}
+              multiline
+              rows={3}
+              sx={{ '& textarea': { color: 'white' }, '& label': { color: '#64748B' }, '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' } }}
+            />
+          </DialogContent>
+          <DialogActions sx={{ p: 3, gap: 1 }}>
+            <Button onClick={() => setActionDialog(null)} disabled={actionLoading} sx={{ color: '#64748B', fontWeight: 600 }}>Cancel</Button>
+            <Button
+              variant="contained"
+              disabled={!actionComment.trim() || actionLoading}
+              onClick={handleWorkflowAction}
+              sx={{
+                bgcolor: actionDialog === 'approve' ? '#10B981' : actionDialog === 'reject' ? '#EF4444' : '#F97316',
+                fontWeight: 700,
+                borderRadius: 2,
+                px: 4,
+                '&:hover': { bgcolor: actionDialog === 'approve' ? '#059669' : actionDialog === 'reject' ? '#DC2626' : '#EA6C00' },
+              }}
+            >
+              {actionLoading ? <CircularProgress size={20} color="inherit" /> : `Confirm ${actionDialog?.charAt(0).toUpperCase()}${actionDialog?.slice(1)}`}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </Fade>
   );
