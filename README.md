@@ -1,100 +1,321 @@
-# AI Network Config Diff Reviewer
+# NetConfigAI — Enterprise Network Configuration Review Platform
 
-![Architecture](https://via.placeholder.com/800x400?text=AI+Network+Config+Diff+Reviewer)
+<div align="center">
 
-## Project Overview
+![NetConfigAI](https://img.shields.io/badge/NetConfigAI-Enterprise-3B82F6?style=for-the-badge)
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python)
+![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=for-the-badge&logo=fastapi)
+![Gemini AI](https://img.shields.io/badge/Gemini_AI-Powered-4285F4?style=for-the-badge&logo=google)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker)
+![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
-An enterprise-grade AI-powered platform that compares two versions of network configuration files (Terraform, JSON, YAML, AWS/GCP/Azure exports), identifies configuration changes, performs intelligent security risk analysis using a locally hosted Llama 3 LLM via Ollama, validates against compliance frameworks, and produces approval-ready reports.
+**AI-powered network configuration change review with automated risk scoring, compliance checking, and enterprise approval workflows.**
 
-## Prerequisites
+[🚀 Live Demo](#running-locally) · [📄 Architecture](#architecture-overview) · [🧪 Tests](#running-tests) · [📹 Demo Video](#demo-video)
 
-- **Docker Desktop** (or Docker Engine + Docker Compose)
-- **Ollama** (installed locally or running via Docker)
-- **Node.js 20+** (for local frontend development)
-- **Python 3.11+** (for local backend development)
+</div>
 
-## Quick Start
+---
 
-Run these 5 commands to get the application running locally:
+## 🎯 Problem Statement
+
+Network engineers change firewall rules, security groups, and router configs daily. A single misconfiguration can expose critical infrastructure to attack. Manual peer review is slow, inconsistent, and doesn't scale. **NetConfigAI** automates this with Gemini AI to detect risks, check compliance, and manage the approval workflow — end to end.
+
+---
+
+## ✨ Key Features
+
+| Feature | Description |
+|---|---|
+| 🤖 **AI Diff Analysis** | Gemini 1.5 Flash analyzes every configuration change and assigns a risk score 0–100 |
+| 🛡️ **Compliance Checks** | CIS Benchmarks, NIST 800-53, PCI-DSS, SOC2 — automated Pass/Fail per control |
+| ✅ **Approval Workflow** | Approve, Reject, or Escalate reviews with mandatory comment and audit trail |
+| 📊 **Live Dashboard** | Real-time stat cards, risk distribution charts, compliance health bars |
+| 📋 **Audit Log** | Immutable enterprise event trail for every action (login, approve, reject, download) |
+| 🔐 **Google OAuth** | Sign in with Google — auto-registers new users as network engineers |
+| 📄 **PDF Reports** | Download enterprise reports with risk charts, compliance findings, AI recommendations |
+| 🎯 **Onboarding Tour** | 7-step guided tour for new users using react-joyride |
+| 🔄 **Agent Loop** | Background Celery worker polls and triggers Gemini analysis asynchronously |
+
+---
+
+## 🏗️ Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        FRONTEND (React + Vite)                       │
+│  ┌─────────┐  ┌──────────┐  ┌─────────────┐  ┌──────────────────┐  │
+│  │Dashboard│  │UploadPage│  │ReviewDetail │  │CompliancePage    │  │
+│  │(recharts│  │(wizard)  │  │(diff+tabs)  │  │AuditLog HelpPage │  │
+│  └────┬────┘  └────┬─────┘  └──────┬──────┘  └──────────────────┘  │
+│       └────────────┴───────────────┘                                 │
+│                     Axios + JWT Auth Headers                         │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │ REST API
+┌────────────────────────────▼────────────────────────────────────────┐
+│                    BACKEND (FastAPI + Python)                         │
+│  ┌──────────┐  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  │
+│  │Auth API  │  │Reviews API   │  │Reports API   │  │Dashboard   │  │
+│  │/register │  │/approve      │  │/pdf          │  │/stats      │  │
+│  │/login    │  │/reject       │  │/compliance   │  │            │  │
+│  │/google   │  │/escalate     │  └──────────────┘  └────────────┘  │
+│  └──────────┘  └──────┬───────┘                                      │
+│                        │ Celery Task                                  │
+│  ┌─────────────────────▼────────────────────────────────────────┐   │
+│  │              AI AGENT LOOP (Celery + Redis)                   │   │
+│  │  1. Receive config files  →  2. Parse format (JSON/YAML/IOS)  │   │
+│  │  3. Diff Engine (DeepDiff + unified-diff)                      │   │
+│  │  4. Risk Scorer (CIDR/port/credential detection)               │   │
+│  │  5. Gemini 1.5 Flash (AI risk + compliance analysis)           │   │
+│  │  6. Store results → 7. Notify frontend via polling             │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+└──────────────┬───────────────────────────────────────────────────────┘
+               │
+    ┌──────────▼──────────┐     ┌──────────────────────┐
+    │  PostgreSQL 15       │     │  Redis 7             │
+    │  - users            │     │  - Celery broker     │
+    │  - reviews          │     │  - Celery results    │
+    │  - diff_changes     │     │  - Session cache     │
+    │  - audit_logs       │     └──────────────────────┘
+    │  - workflow_steps   │
+    └─────────────────────┘
+                              ┌──────────────────────┐
+                              │  Google Gemini API   │
+                              │  gemini-1.5-flash    │
+                              │  (External AI LLM)   │
+                              └──────────────────────┘
+```
+
+### AI Agent Loop
+
+The core AI capability is an **Agent Loop** — a background Celery worker that:
+1. Receives a submitted config review task
+2. Parses the config format (auto-detects JSON, YAML, Cisco IOS, Palo Alto)
+3. Runs a 2-pass diff: semantic DeepDiff + unified text-diff fallback
+4. Scores each change for risk (CIDR expansion, port exposure, credential changes)
+5. Calls **Gemini 1.5 Flash** with a structured prompt for AI risk analysis + compliance evaluation
+6. Persists all findings to PostgreSQL
+7. Frontend polls `/api/v1/reviews/{id}/status` until complete
+
+### MCP / External API Integration
+
+- **Gemini API** (Google AI Studio) — External LLM for analysis
+- **Google OAuth2 UserInfo API** — Social login token exchange
+- **Recharts** — Real-time data visualization
+- **ReportLab** (PDF generation) — Enterprise report generation
+
+---
+
+## 🛠️ Technology Stack
+
+| Layer | Technology | Version |
+|---|---|---|
+| Frontend | React + TypeScript + Vite | 18 + 5.4 |
+| UI Library | Material UI | 5.x |
+| Charts | Recharts | 2.x |
+| Onboarding | react-joyride | 2.7 |
+| Backend | FastAPI | 0.111 |
+| AI/LLM | Google Gemini 1.5 Flash | via API |
+| Task Queue | Celery + Redis | 5.x + 7.x |
+| Database | PostgreSQL | 15 |
+| ORM | SQLAlchemy (async) | 2.x |
+| Auth | JWT + bcrypt + Google OAuth | — |
+| Container | Docker + Docker Compose | — |
+| Diff Engine | DeepDiff + difflib | — |
+| PDF | ReportLab | — |
+| Source Control | GitHub | — |
+
+---
+
+## 🚀 Setup & Run Instructions
+
+### Prerequisites
+
+- Docker Desktop (with Docker Compose v2)
+- Git
+- A Gemini API key (free at [aistudio.google.com](https://aistudio.google.com))
+
+### 1. Clone the Repository
 
 ```bash
-# 1. Clone/navigate to repository
-cd d:/web_netconfig/ai-network-config-diff-reviewer
+git clone https://github.com/gayusankar06/netconfig.git
+cd netconfig
+```
 
-# 2. Setup environment variables
+### 2. Configure Environment
+
+```bash
+# Copy and edit the env file
 cp .env.example .env
-
-# 3. Start services
-make up
-
-# 4. Wait for database, then run migrations and seed data
-make migrate
-make seed
-
-# 5. Access the application
-# Frontend: http://localhost:3000
-# Backend API Docs: http://localhost:8000/docs
 ```
 
-## Detailed Setup Guide
+Edit `.env` and set your Gemini API key:
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+VITE_GOOGLE_CLIENT_ID=your_google_client_id_here   # Optional: for Google Sign-In
+```
 
-The application uses Docker Compose to run all services locally. The `docker-compose.yml` file defines the following services:
-- `backend`: FastAPI application
-- `frontend`: React/Vite development server
-- `postgres`: PostgreSQL 16 database
-- `redis`: Redis 7.2 (cache & Celery broker)
-- `ollama`: Local LLM server
-- `celery_worker`: Background task worker
-- `celery_beat`: Background task scheduler
-- `prometheus`: Metrics collection
-- `grafana`: Metrics visualization
-
-### Pulling the Llama 3 Model
-
-The Ollama container needs the `llama3` model to perform AI analysis. You can pull it manually:
+### 3. Start All Services
 
 ```bash
-docker exec -it ai-network-config-diff-reviewer-ollama-1 ollama pull llama3
+docker compose up -d
 ```
 
-## Configuration Reference
+This starts: PostgreSQL, Redis, FastAPI backend, Celery worker, React frontend.
 
-Key `.env` variables:
+### 4. Access the Application
 
-- `DATABASE_URL`: PostgreSQL connection string.
-- `REDIS_URL`: Redis connection string.
-- `OLLAMA_BASE_URL`: URL to the Ollama server (e.g., `http://ollama:11434`).
-- `OLLAMA_MODEL`: The LLM model to use (default: `llama3`).
-- `JWT_SECRET_KEY`: Secret key for signing JWT tokens.
+| Service | URL |
+|---|---|
+| **Frontend** | http://localhost:3000 |
+| **Backend API** | http://localhost:8000 |
+| **API Docs (Swagger)** | http://localhost:8000/docs |
+| **Health Check** | http://localhost:8000/health/ready |
 
-## API Documentation
+### 5. Login
 
-Once the backend is running, the interactive API documentation (Swagger UI) is available at:
-`http://localhost:8000/docs`
+| Email | Password | Role |
+|---|---|---|
+| `admin@netconfigdiff.com` | `Admin123!` | Admin |
+| `admin@netconfig.ai` | `Admin123!` | Super Admin |
+| `Demo@gmail.com` | `Admin123!` | Network Engineer |
 
-## Sample Usage Walkthrough
+---
 
-1. Login using the default admin credentials (created via `make seed`).
-2. Navigate to the "Upload Config" page.
-3. Select "AWS Security Group" as the configuration type.
-4. Upload `sample-configs/aws-sg-old.json` and `sample-configs/aws-sg-new.json`.
-5. Review the structural differences in the Diff Viewer.
-6. Click "Run AI Analysis" to trigger risk scoring and Llama 3 evaluation.
-7. Review the compliance violations and AI recommendations.
-8. Approve or reject the change.
-9. Download the PDF report.
+## 🧪 Running Tests
 
-## Architecture Decisions
+### Backend Tests (pytest)
 
-- **FastAPI**: Chosen for its async support, performance, and built-in OpenAPI generation.
-- **React + Vite**: Chosen for fast development builds and modern component ecosystem.
-- **Ollama**: Allows running LLMs locally to ensure sensitive network configurations never leave the enterprise network.
-- **Celery + Redis**: Used to offload long-running tasks like AI analysis and report generation to background workers.
+```bash
+cd backend
+pip install -r requirements.txt
+pytest tests/ -v --tb=short
+```
 
-## Future Enhancements Roadmap
+### Frontend Tests (Vitest)
 
-- Multi-Cloud Risk Correlation
-- Azure Support
-- ServiceNow Integration
-- GitHub Pull Request Analysis
-- AI Remediation Suggestions
+```bash
+cd frontend
+npm install
+npm run test
+```
+
+### Run All Tests via Docker
+
+```bash
+docker exec netconfig_backend pytest tests/ -v
+docker exec netconfig_frontend npm run test -- --run
+```
+
+---
+
+## 📁 Project Structure
+
+```
+netconfig/
+├── backend/
+│   ├── app/
+│   │   ├── api/v1/          # FastAPI route handlers
+│   │   │   ├── auth.py      # Login, register, Google OAuth
+│   │   │   ├── reviews.py   # CRUD + approve/reject/escalate
+│   │   │   ├── dashboard.py # Live stats
+│   │   │   ├── audit.py     # Audit log trail
+│   │   │   └── reports.py   # PDF generation
+│   │   ├── models/          # SQLAlchemy ORM models
+│   │   ├── services/
+│   │   │   ├── diff_engine.py    # DeepDiff + unified-diff engine
+│   │   │   ├── gemini_service.py # Gemini AI integration
+│   │   │   └── report_service.py # PDF report builder
+│   │   ├── workers/tasks.py  # Celery AI agent loop
+│   │   └── main.py
+│   ├── tests/               # pytest test suite
+│   └── Dockerfile
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── Dashboard.tsx      # Live stats + charts
+│   │   │   ├── UploadPage.tsx     # Config upload wizard
+│   │   │   ├── ReviewDetailPage.tsx# Diff + workflow actions
+│   │   │   ├── CompliancePage.tsx # Compliance overview
+│   │   │   ├── AuditLogPage.tsx   # Audit trail
+│   │   │   ├── HelpPage.tsx       # Documentation + FAQ
+│   │   │   ├── OnboardingTour.tsx # react-joyride tour
+│   │   │   ├── Sidebar.tsx        # Navigation sidebar
+│   │   │   └── AuthPage.tsx       # Login + Google OAuth
+│   │   └── App.tsx
+│   └── Dockerfile
+├── sample_data/             # Sample config files for demo
+├── docs/                    # Documentation
+├── docker-compose.yml
+├── .env.example
+└── README.md
+```
+
+---
+
+## 🤖 AI Capabilities Demonstrated
+
+### ✅ Agent Loop
+Background Celery worker continuously processes submitted reviews:
+```
+Submit → Parse → Diff → Risk Score → Gemini AI → Store → Notify
+```
+
+### ✅ External API Integration
+- **Google Gemini 1.5 Flash** — LLM for risk analysis and compliance evaluation
+- **Google OAuth2 UserInfo API** — Social authentication
+
+### ✅ MCP-style Tool Consumption
+- Structured tool-style prompting to Gemini with JSON schema response
+- Config parser service auto-detects and normalizes multiple formats
+
+---
+
+## 📐 Assumptions & Limitations
+
+| Item | Detail |
+|---|---|
+| **Gemini API** | Requires a valid Gemini API key (free tier available) |
+| **Docker** | Requires Docker Desktop v2+ with Compose v2 |
+| **Google OAuth** | Requires a Google Cloud OAuth client ID for social login |
+| **SSL** | Not configured for local dev (HTTP only). Use a reverse proxy (Nginx/Caddy) for production |
+| **Config Size** | Large configs (>1MB) may be truncated for Gemini prompt limits |
+| **Analysis Time** | Gemini analysis takes 10–30 seconds per review |
+| **PDF Reports** | Requires completed AI analysis (status: pending_review or approved) |
+| **Port Exposure** | App runs on ports 3000, 8000, 5432, 6379 — ensure they are free |
+
+---
+
+## 📹 Demo Video
+
+> 5–7 minute walkthrough recorded with OBS/Loom demonstrating:
+> 1. Login (email + Google OAuth)
+> 2. Upload Old and New config files
+> 3. Watch AI analysis run in background
+> 4. Review diff + risk score + AI summary
+> 5. Approve/Reject/Escalate with comment
+> 6. View Compliance findings
+> 7. Download PDF report
+> 8. Check Audit Log
+
+**Demo Video Link:** [Submit after recording]
+
+---
+
+## 🏆 Challenge Criteria Checklist
+
+| # | Criterion | Status |
+|---|---|---|
+| 1 | AI-Assisted Development | ✅ Gemini AI used throughout |
+| 2 | Agent Loop | ✅ Celery async AI agent |
+| 3 | MCP / External API | ✅ Gemini API + Google OAuth API |
+| 4 | Working End-to-End | ✅ Full CRUD + workflow + reports |
+| 5 | Code Quality | ✅ TypeScript + typed Python |
+| 6 | Documentation | ✅ This README + docs/ folder |
+
+---
+
+## 📄 License
+
+MIT License — Free to use, modify, and distribute.
