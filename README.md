@@ -1,6 +1,6 @@
 # NetConfigAI — Enterprise Network Configuration Review Platform
-
-live frontend render running link: https://netconfigure.onrender.com/
+WELCOME!
+NOTE! (live frontend render running link: https://netconfigure.onrender.com/) & (Backend need more resources for deploy on render and other platform also like gcp cloud run, mig, gke  etc.. or aws ags, eks, ec2 etc.. or ohte hosting platforms as well, all we have only free tier, with in free tier account we cant able to deploy, thats why showcased the frontend alone) THANK YOU!
 
 <div align="center">
 
