@@ -1,6 +1,6 @@
 # NetConfigAI — Enterprise Network Configuration Review Platform
-WELCOME!
-NOTE! (live frontend render running link: https://netconfigure.onrender.com/) & (Backend need more resources for deploy on render and other platform also like gcp cloud run, mig, gke  etc.. or aws ags, eks, ec2 etc.. or other hosting platforms as well, all we have only free tier, with in free tier account we cant able to deploy, thats why showcased the frontend alone) THANK YOU!
+
+
 
 <div align="center">
 
@@ -302,6 +302,8 @@ Submit → Parse → Diff → Risk Score → Gemini AI → Store → Notify
 > 8. Check Audit Log
 
 **Demo Video Link:** [Submit after recording]
+
+NOTE! (live frontend landing page render running link: https://netconfigure.onrender.com/) & (Backend need more resources for deploy on render and other platform also like gcp cloud run, mig, gke  etc.. or aws ags, eks, ec2 etc.. or other hosting platforms as well, all we have only free tier, with in free tier account we cant able to deploy, thats why showcased the frontend alone) THANK YOU!
 
 ---
 
